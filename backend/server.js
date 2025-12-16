@@ -14,17 +14,22 @@ let invoices = [];        // stores all processed invoices
 let storedDocs = [];      // stores content for plagiarism checking
 
 //------------------------------------------------------------
+// ROOT HEALTH CHECK (IMPORTANT FOR RENDER)
+//------------------------------------------------------------
+app.get("/", (req, res) => {
+  res.send("🚀 DocumentAI Backend is running successfully");
+});
+
+//------------------------------------------------------------
 // OCR ENDPOINT
 //------------------------------------------------------------
 app.post("/ocr", upload.single("image"), async (req, res) => {
   try {
     const buffer = req.file.buffer;
-
     const result = await Tesseract.recognize(buffer, "eng");
     res.json({ text: result.data.text });
-
   } catch (err) {
-    res.json({ error: "OCR failed" });
+    res.status(500).json({ error: "OCR failed" });
   }
 });
 
@@ -57,11 +62,13 @@ function redactPII(text) {
 function toneScore(desc) {
   let score = 0;
   const words = ["urgent", "immediately", "asap", "kindly approve", "please approve"];
-  words.forEach(w => { if (desc.toLowerCase().includes(w)) score += 15; });
+  words.forEach(w => {
+    if (desc.toLowerCase().includes(w)) score += 15;
+  });
   return score;
 }
 
-// FISHINESS DETECTION (FINAL STRONG VERSION)
+// FISHINESS DETECTION
 function fishiness(desc) {
   let score = 0;
   const text = desc.toLowerCase();
@@ -88,10 +95,8 @@ function fishiness(desc) {
 // TRANSPARENCY INDEX
 function transparency(desc) {
   let score = 70;
-
   if (desc.length < 30) score -= 20;
   if (/misc|fee|adjust|round/i.test(desc)) score -= 20;
-
   return Math.max(0, score);
 }
 
@@ -101,7 +106,7 @@ function clarity(desc) {
   return Math.min(100, len * 3);
 }
 
-// HEATMAP (risk keywords)
+// HEATMAP
 function heatmap(desc) {
   const words = ["urgent", "immediately", "fee", "misc", "adjustment", "reimburse"];
   return words.filter(w => desc.toLowerCase().includes(w));
@@ -121,15 +126,14 @@ function vendorPattern(name) {
   const list = invoices.filter(x => x.vendorName === name);
   if (list.length < 3) return "New Vendor (No risk pattern yet)";
 
-  const amounts = list.map(x => x.amount);
-  const avg = amounts.reduce((a, b) => a + b) / amounts.length;
-
+  const avg = list.reduce((sum, x) => sum + x.amount, 0) / list.length;
   return avg > 50000 ? "Unpredictable Vendor" : "Stable Vendor Pattern";
 }
 
 // BLOCKCHAIN HASH
 function computeHash(obj) {
-  return crypto.createHash("sha256")
+  return crypto
+    .createHash("sha256")
     .update(JSON.stringify(obj))
     .digest("hex");
 }
@@ -137,30 +141,23 @@ function computeHash(obj) {
 // DOCUMENT REPUTATION SCORE
 function reputationScore(inv) {
   let base = 100;
-
-  // penalties
   base -= inv.anomalyScore * 0.8;
   base -= inv.piiExposure * 0.9;
   base -= inv.plagiarismScore * 0.7;
   base -= inv.toneScore * 0.6;
   base -= inv.fishinessScore * 0.7;
-
-  // rewards
   base += inv.transparencyIndex * 0.1;
   base += inv.clarityScore * 0.1;
-
   return Math.max(0, Math.min(100, Math.round(base)));
 }
 
-// STORYLINE GENERATION
+// STORYLINE
 function storyline(inv) {
   let lines = [];
-
   if (inv.toneScore > 0) lines.push("Urgent tone increases fraud probability.");
   if (inv.pii.length > 0) lines.push("Sensitive personal information detected.");
   if (inv.fishinessScore > 20) lines.push("Suspicious wording detected.");
   if (inv.plagiarismScore > 20) lines.push("Possible repeated invoice text.");
-
   return lines.join(" ");
 }
 
@@ -170,10 +167,8 @@ function storyline(inv) {
 app.post("/process-invoice", (req, res) => {
   const { invoiceNumber, vendorName, amount, description } = req.body;
 
-  // store original text for plagiarism
   storedDocs.push(description);
 
-  // AI calculations
   const tone = toneScore(description);
   const fish = fishiness(description);
   const trans = transparency(description);
@@ -182,26 +177,17 @@ app.post("/process-invoice", (req, res) => {
   const pii = detectPII(description);
   const redacted = redactPII(description);
 
-  // plagiarism
   let similarity = 0;
   storedDocs.slice(0, -1).forEach(doc => {
     similarity = Math.max(similarity, jaccard(description, doc));
   });
+
   const plagiarismScore = Math.round(similarity * 100);
-
-  // anomaly (simple version)
   const anomalyScore = amount > 1000000 ? 35 : 0;
-
-  // vendor behavior
   const vendorPatternResult = vendorPattern(vendorName);
-
-  // PII exposure weighting
   const piiExposure = pii.length * 25;
-
-  // blockchain hashes
   const prevHash = invoices.length === 0 ? "GEN" : invoices[invoices.length - 1].recordHash;
 
-  // create invoice object
   const inv = {
     invoiceNumber,
     vendorName,
@@ -218,12 +204,7 @@ app.post("/process-invoice", (req, res) => {
     heatmap: heat,
     redacted,
     vendorPattern: vendorPatternResult,
-    storyline: storyline({
-      toneScore: tone,
-      pii,
-      fishinessScore: fish,
-      plagiarismScore
-    }),
+    storyline: storyline({ toneScore: tone, pii, fishinessScore: fish, plagiarismScore }),
     prevHash
   };
 
@@ -231,7 +212,6 @@ app.post("/process-invoice", (req, res) => {
   inv.DRS = reputationScore(inv);
 
   invoices.push(inv);
-
   res.json(inv);
 });
 
@@ -244,7 +224,9 @@ app.get("/invoices", (req, res) => {
 
 //------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => console.log(`✅ Server running on port ${PORT}`));
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
 
 
 
