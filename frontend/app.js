@@ -1,4 +1,4 @@
-const api = "http://localhost:5000";
+const api = fetch("https://documentai-backend.onrender.com/process-invoice");
 
 let vendorChart = null;
 let radarChart = null;
