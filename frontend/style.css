@@ -1,0 +1,201 @@
+/* ============================================
+   GLOBAL UI
+============================================ */
+body {
+    margin: 0;
+    font-family: "Poppins", sans-serif;
+    background: linear-gradient(135deg, #0a0f2c, #091020, #050912);
+    color: #e3eeff;
+    overflow-x: hidden;
+}
+
+/* ============================================
+   HEADER
+============================================ */
+.glass-header {
+    padding: 30px;
+    text-align: center;
+    color: white;
+
+    background: rgba(255,255,255,0.05);
+    backdrop-filter: blur(10px);
+
+    border-bottom: 1px solid rgba(0,255,255,0.2);
+    box-shadow: 0 0 20px rgba(0,255,255,0.2);
+}
+
+h1 {
+    font-size: 42px;
+    margin: 0;
+    text-shadow: 0 0 20px cyan;
+}
+
+/* ============================================
+   CARDS
+============================================ */
+.glass {
+    background: rgba(255,255,255,0.07);
+    backdrop-filter: blur(12px);
+    border-radius: 16px;
+    padding: 25px;
+    box-shadow: 0 0 25px rgba(0, 255, 255, 0.25);
+    border: 1px solid rgba(0,255,255,0.2);
+    margin: 30px auto;
+}
+
+.input-section {
+    display: flex;
+    justify-content: center;
+}
+
+/* ============================================
+   INPUT STYLING
+============================================ */
+input, textarea {
+    width: 100%;
+    padding: 12px;
+    margin-top: 5px;
+    margin-bottom: 15px;
+
+    background: rgba(0,0,0,0.4);
+    border: 1px solid cyan;
+    border-radius: 8px;
+
+    color: #dffaff;
+}
+
+textarea {
+    height: 150px;
+}
+
+/* ============================================
+   BUTTONS
+============================================ */
+.btn-primary {
+    background: linear-gradient(135deg, cyan, #07b8ff);
+    border: none;
+    padding: 12px;
+    border-radius: 8px;
+    width: 100%;
+    cursor: pointer;
+    color: black;
+    font-weight: bold;
+    font-size: 16px;
+    box-shadow: 0 0 12px cyan;
+}
+
+.btn-primary:hover {
+    box-shadow: 0 0 20px #00eaff;
+}
+
+.btn-secondary {
+    background: rgba(0,255,255,0.2);
+    border: 1px solid cyan;
+    padding: 10px;
+    width: 100%;
+    color: cyan;
+    border-radius: 8px;
+    cursor: pointer;
+    margin-top: 10px;
+}
+
+.btn-secondary:hover {
+    background: rgba(0,255,255,0.35);
+}
+
+/* ============================================
+   TABLE
+============================================ */
+.table-section {
+    width: 85%;
+    padding: 25px;
+    border-radius: 16px;
+}
+
+table {
+    width: 100%;
+    border-collapse: collapse;
+    background: rgba(255,255,255,0.05);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+th {
+    background: rgba(0,255,255,0.15);
+    color: cyan;
+    padding: 12px;
+}
+
+td {
+    padding: 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+    text-align: center;
+}
+
+tr:hover {
+    background: rgba(0,255,255,0.1);
+}
+
+/* ============================================
+   MODAL
+============================================ */
+.modal {
+    display: none;
+    position: fixed;
+    top: 0; left: 0;
+    height: 100%; width: 100%;
+    background: rgba(0,0,0,0.6);
+    backdrop-filter: blur(6px);
+}
+
+.modal-content {
+    margin: 40px auto;
+    width: 90%;
+    max-width: 900px;
+    padding: 25px;
+    border-radius: 16px;
+    max-height: 85vh;
+    overflow-y: auto;
+    animation: popup 0.4s ease-out;
+}
+
+@keyframes popup {
+    from { transform: scale(0.6); opacity: 0; }
+    to { transform: scale(1); opacity: 1; }
+}
+
+.close {
+    float: right;
+    font-size: 35px;
+    cursor: pointer;
+    color: cyan;
+}
+
+/* ============================================
+   CANVAS
+============================================ */
+canvas {
+    margin-top: 20px;
+    background: rgba(0,0,0,0.45);
+    border-radius: 12px;
+    padding: 12px;
+    box-shadow: inset 0 0 15px rgba(0,255,255,0.2);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
