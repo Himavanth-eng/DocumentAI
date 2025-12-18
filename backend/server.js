@@ -1,42 +1,49 @@
 const express = require("express");
-const cors = require("cors");
 const multer = require("multer");
 const Tesseract = require("tesseract.js");
 const crypto = require("crypto");
 
 const app = express();
 
-// ------------------------------------------------------------
-// MIDDLEWARE (ORDER IS IMPORTANT)
-// ------------------------------------------------------------
+/* ============================================================
+   BODY PARSER
+============================================================ */
 app.use(express.json());
 
-// ✅ FIXED CORS (IMPORTANT FOR RENDER)
-app.use(cors({
-  origin: "*", // allow all frontends (safe for hackathon/demo)
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-  allowedHeaders: ["Content-Type", "Authorization"]
-}));
+/* ============================================================
+   🔥 MANUAL CORS (RENDER-PROOF)
+============================================================ */
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
 
-// ✅ HANDLE PREFLIGHT REQUESTS
-app.options("*", cors());
+  // IMPORTANT: handle preflight
+  if (req.method === "OPTIONS") {
+    return res.sendStatus(200);
+  }
 
-// ------------------------------------------------------------
+  next();
+});
+
+/* ============================================================
+   FILE UPLOAD (OCR)
+============================================================ */
 const upload = multer({ storage: multer.memoryStorage() });
 
-let invoices = [];        // stores all processed invoices
-let storedDocs = [];      // stores content for plagiarism checking
+let invoices = [];
+let storedDocs = [];
 
-// ------------------------------------------------------------
-// ROOT HEALTH CHECK
-// ------------------------------------------------------------
+/* ============================================================
+   ROOT CHECK
+============================================================ */
 app.get("/", (req, res) => {
   res.send("🚀 DocumentAI Backend is running successfully");
 });
 
-// ------------------------------------------------------------
-// OCR ENDPOINT
-// ------------------------------------------------------------
+/* ============================================================
+   OCR ENDPOINT
+============================================================ */
 app.post("/ocr", upload.single("image"), async (req, res) => {
   try {
     const buffer = req.file.buffer;
@@ -47,21 +54,18 @@ app.post("/ocr", upload.single("image"), async (req, res) => {
   }
 });
 
-// ------------------------------------------------------------
-// AI MODULES
-// ------------------------------------------------------------
-
-// PII DETECTION
+/* ============================================================
+   AI UTILITIES
+============================================================ */
 function detectPII(text) {
-  let detected = [];
-  if (/\b\d{4}\s\d{4}\s\d{4}\b/.test(text)) detected.push("AADHAAR");
-  if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(text)) detected.push("PAN");
-  if (/\b[6-9]\d{9}\b/.test(text)) detected.push("PHONE");
-  if (/\S+@\S+\.\S+/.test(text)) detected.push("EMAIL");
-  return detected;
+  let out = [];
+  if (/\b\d{4}\s\d{4}\s\d{4}\b/.test(text)) out.push("AADHAAR");
+  if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(text)) out.push("PAN");
+  if (/\b[6-9]\d{9}\b/.test(text)) out.push("PHONE");
+  if (/\S+@\S+\.\S+/.test(text)) out.push("EMAIL");
+  return out;
 }
 
-// REDACTION
 function redactPII(text) {
   return text
     .replace(/\b\d{4}\s\d{4}\s\d{4}\b/g, "**** **** ****")
@@ -70,81 +74,49 @@ function redactPII(text) {
     .replace(/\S+@\S+\.\S+/g, "hidden@email.com");
 }
 
-// TONE ANALYSIS
-function toneScore(desc) {
-  let score = 0;
-  ["urgent", "immediately", "asap", "kindly approve", "please approve"]
-    .forEach(w => {
-      if (desc.toLowerCase().includes(w)) score += 15;
-    });
-  return score;
-}
-
-// FISHINESS DETECTION
-function fishiness(desc) {
-  let score = 0;
-  const text = desc.toLowerCase();
-  [
-    { word: "urgent", points: 20 },
-    { word: "immediately", points: 20 },
-    { word: "asap", points: 20 },
-    { word: "kindly approve", points: 10 },
-    { word: "adjustment", points: 25 },
-    { word: "misc", points: 20 },
-    { word: "reimburse", points: 15 },
-    { word: "fee", points: 20 },
-    { word: "round off", points: 20 }
-  ].forEach(rule => {
-    if (text.includes(rule.word)) score += rule.points;
+function toneScore(t) {
+  let s = 0;
+  ["urgent", "immediately", "asap", "kindly approve"].forEach(w => {
+    if (t.toLowerCase().includes(w)) s += 15;
   });
-  return Math.min(100, score);
+  return s;
 }
 
-// TRANSPARENCY INDEX
-function transparency(desc) {
-  let score = 70;
-  if (desc.length < 30) score -= 20;
-  if (/misc|fee|adjust|round/i.test(desc)) score -= 20;
-  return Math.max(0, score);
+function fishiness(t) {
+  let s = 0;
+  const rules = [
+    ["urgent",20],["immediately",20],["asap",20],
+    ["adjustment",25],["misc",20],["fee",20]
+  ];
+  rules.forEach(r => {
+    if (t.toLowerCase().includes(r[0])) s += r[1];
+  });
+  return Math.min(100, s);
 }
 
-// CLARITY SCORE
-function clarity(desc) {
-  return Math.min(100, desc.split(" ").length * 3);
+function transparency(t) {
+  let s = 70;
+  if (t.length < 30) s -= 20;
+  if (/misc|fee|adjust/i.test(t)) s -= 20;
+  return Math.max(0, s);
 }
 
-// HEATMAP
-function heatmap(desc) {
-  const words = ["urgent", "immediately", "fee", "misc", "adjustment", "reimburse"];
-  return words.filter(w => desc.toLowerCase().includes(w));
+function clarity(t) {
+  return Math.min(100, t.split(" ").length * 3);
 }
 
-// JACCARD SIMILARITY
 function jaccard(a, b) {
-  const set1 = new Set(a.split(" "));
-  const set2 = new Set(b.split(" "));
-  const intersection = new Set([...set1].filter(x => set2.has(x)));
-  const union = new Set([...set1, ...set2]);
-  return intersection.size / union.size;
+  const s1 = new Set(a.split(" "));
+  const s2 = new Set(b.split(" "));
+  return [...s1].filter(x => s2.has(x)).length /
+         new Set([...s1, ...s2]).size;
 }
 
-// VENDOR PATTERN
-function vendorPattern(name) {
-  const list = invoices.filter(x => x.vendorName === name);
-  if (list.length < 3) return "New Vendor (No risk pattern yet)";
-  const avg = list.reduce((sum, x) => sum + x.amount, 0) / list.length;
-  return avg > 50000 ? "Unpredictable Vendor" : "Stable Vendor Pattern";
+function computeHash(o) {
+  return crypto.createHash("sha256").update(JSON.stringify(o)).digest("hex");
 }
 
-// BLOCKCHAIN HASH
-function computeHash(obj) {
-  return crypto.createHash("sha256")
-    .update(JSON.stringify(obj))
-    .digest("hex");
-}
-
-// DOCUMENT REPUTATION SCORE
-function reputationScore(inv) {
+function reputation(inv) {
   let base = 100;
   base -= inv.anomalyScore * 0.8;
   base -= inv.piiExposure * 0.9;
@@ -153,38 +125,20 @@ function reputationScore(inv) {
   base -= inv.fishinessScore * 0.7;
   base += inv.transparencyIndex * 0.1;
   base += inv.clarityScore * 0.1;
-  return Math.max(0, Math.min(100, Math.round(base)));
+  return Math.max(0, Math.round(base));
 }
 
-// STORYLINE
-function storyline(inv) {
-  let lines = [];
-  if (inv.toneScore > 0) lines.push("Urgent tone increases fraud probability.");
-  if (inv.pii.length > 0) lines.push("Sensitive personal information detected.");
-  if (inv.fishinessScore > 20) lines.push("Suspicious wording detected.");
-  if (inv.plagiarismScore > 20) lines.push("Possible repeated invoice text.");
-  return lines.join(" ");
-}
-
-// ------------------------------------------------------------
-// PROCESS INVOICE
-// ------------------------------------------------------------
+/* ============================================================
+   PROCESS INVOICE
+============================================================ */
 app.post("/process-invoice", (req, res) => {
   const { invoiceNumber, vendorName, amount, description } = req.body;
 
   storedDocs.push(description);
 
-  const tone = toneScore(description);
-  const fish = fishiness(description);
-  const trans = transparency(description);
-  const clear = clarity(description);
-  const heat = heatmap(description);
-  const pii = detectPII(description);
-  const redacted = redactPII(description);
-
-  let similarity = 0;
-  storedDocs.slice(0, -1).forEach(doc => {
-    similarity = Math.max(similarity, jaccard(description, doc));
+  let sim = 0;
+  storedDocs.slice(0, -1).forEach(d => {
+    sim = Math.max(sim, jaccard(description, d));
   });
 
   const inv = {
@@ -193,35 +147,34 @@ app.post("/process-invoice", (req, res) => {
     amount,
     description,
     anomalyScore: amount > 1000000 ? 35 : 0,
-    toneScore: tone,
-    fishinessScore: fish,
-    transparencyIndex: trans,
-    clarityScore: clear,
-    plagiarismScore: Math.round(similarity * 100),
-    pii,
-    piiExposure: pii.length * 25,
-    heatmap: heat,
-    redacted,
-    vendorPattern: vendorPattern(vendorName)
+    toneScore: toneScore(description),
+    fishinessScore: fishiness(description),
+    transparencyIndex: transparency(description),
+    clarityScore: clarity(description),
+    plagiarismScore: Math.round(sim * 100),
+    pii: detectPII(description),
+    piiExposure: detectPII(description).length * 25,
+    redacted: redactPII(description)
   };
 
-  inv.prevHash = invoices.length === 0 ? "GEN" : invoices[invoices.length - 1].recordHash;
+  inv.prevHash = invoices.length ? invoices[invoices.length - 1].recordHash : "GEN";
   inv.recordHash = computeHash(inv);
-  inv.DRS = reputationScore(inv);
-  inv.storyline = storyline(inv);
+  inv.DRS = reputation(inv);
 
   invoices.push(inv);
   res.json(inv);
 });
 
-// ------------------------------------------------------------
-// GET ALL INVOICES
-// ------------------------------------------------------------
+/* ============================================================
+   GET ALL INVOICES
+============================================================ */
 app.get("/invoices", (req, res) => {
   res.json(invoices);
 });
 
-// ------------------------------------------------------------
+/* ============================================================
+   SERVER START
+============================================================ */
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
