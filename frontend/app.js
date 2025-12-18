@@ -1,11 +1,12 @@
-const api = fetch("https://documentai-backend.onrender.com/process-invoice");
+// ✅ BACKEND BASE URL
+const API_BASE = "https://documentai-backend.onrender.com";
 
 let vendorChart = null;
 let radarChart = null;
 
 // ------------------------- LOAD TABLE -------------------------
 async function loadInvoices() {
-    const res = await fetch(api + "/invoices");
+    const res = await fetch(API_BASE + "/invoices");
     const list = await res.json();
 
     const table = document.getElementById("invoiceTable");
@@ -18,16 +19,25 @@ async function loadInvoices() {
             <td>${inv.vendorName}</td>
             <td>₹${inv.amount}</td>
             <td>${inv.DRS}</td>
-            <td><button class='btn-secondary' onclick='showDetails(${JSON.stringify(inv)})'>View</button></td>
-            <td><button class='btn-primary' onclick='deleteInvoice(${i})'>Delete</button></td>
+            <td>
+              <button class="btn-secondary" onclick='showDetails(${JSON.stringify(inv)})'>
+                View
+              </button>
+            </td>
+            <td>
+              <button class="btn-primary" onclick='deleteInvoice(${i})'>
+                Delete
+              </button>
+            </td>
         </tr>`;
     });
 }
+
 loadInvoices();
 
 // ------------------------- SUBMIT -------------------------
 async function submitInvoice(e) {
-    e.preventDefault();
+    e.preventDefault(); // 🔥 VERY IMPORTANT
 
     const data = {
         invoiceNumber: invoiceNumber.value,
@@ -36,9 +46,9 @@ async function submitInvoice(e) {
         description: description.value
     };
 
-    const res = await fetch(api + "/process-invoice", {
+    const res = await fetch(API_BASE + "/process-invoice", {
         method: "POST",
-        headers: {"Content-Type": "application/json"},
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(data)
     });
 
@@ -48,10 +58,9 @@ async function submitInvoice(e) {
     showDetails(result);
 }
 
-// ------------------------- DELETE INVOICE -------------------------
+// ------------------------- DELETE (OPTIONAL – NOT IMPLEMENTED IN BACKEND)
 async function deleteInvoice(index) {
-    await fetch(api + "/delete/" + index, { method: "DELETE" });
-    loadInvoices();
+    alert("Delete API not implemented in backend");
 }
 
 // ------------------------- DETAILS MODAL -------------------------
@@ -75,35 +84,30 @@ async function showDetails(inv) {
         <p>${inv.storyline}</p>
 
         <h3>🔐 PII Detected</h3>
-        <p>${inv.pii.join(", ") || "None"}</p>
+        <p>${inv.pii.length ? inv.pii.join(", ") : "None"}</p>
     `;
 
-    // Build Vendor Trend
-    const res = await fetch(api + "/invoices");
+    // Vendor Trend
+    const res = await fetch(API_BASE + "/invoices");
     const all = await res.json();
 
     const vendorInvoices = all.filter(x => x.vendorName === inv.vendorName);
-
-    const labels = vendorInvoices.map(x => x.invoiceNumber);
-    const amounts = vendorInvoices.map(x => x.amount);
 
     if (vendorChart) vendorChart.destroy();
     vendorChart = new Chart(vendorTrend, {
         type: "line",
         data: {
-            labels,
+            labels: vendorInvoices.map(x => x.invoiceNumber),
             datasets: [{
-                label: "Vendor Spending Trend",
-                data: amounts,
+                label: "Vendor Spending",
+                data: vendorInvoices.map(x => x.amount),
                 borderColor: "cyan",
                 backgroundColor: "rgba(0,255,255,0.3)",
-                tension: 0.4,
                 fill: true
             }]
         }
     });
 
-    // Build Radar
     if (radarChart) radarChart.destroy();
     radarChart = new Chart(riskRadar, {
         type: "radar",
@@ -138,11 +142,16 @@ async function extractTextFromImage() {
     const formData = new FormData();
     formData.append("image", file);
 
-    const res = await fetch(api + "/ocr", { method: "POST", body: formData });
-    const result = await res.json();
+    const res = await fetch(API_BASE + "/ocr", {
+        method: "POST",
+        body: formData
+    });
 
-    description.value = result.text;
+    const result = await res.json();
+    description.value = result.text || "";
 }
+
+
 
 
 
