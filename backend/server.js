@@ -5,24 +5,38 @@ const Tesseract = require("tesseract.js");
 const crypto = require("crypto");
 
 const app = express();
-app.use(express.json());
-app.use(cors());
 
+// ------------------------------------------------------------
+// MIDDLEWARE (ORDER IS IMPORTANT)
+// ------------------------------------------------------------
+app.use(express.json());
+
+// ✅ FIXED CORS (IMPORTANT FOR RENDER)
+app.use(cors({
+  origin: "*", // allow all frontends (safe for hackathon/demo)
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"]
+}));
+
+// ✅ HANDLE PREFLIGHT REQUESTS
+app.options("*", cors());
+
+// ------------------------------------------------------------
 const upload = multer({ storage: multer.memoryStorage() });
 
 let invoices = [];        // stores all processed invoices
 let storedDocs = [];      // stores content for plagiarism checking
 
-//------------------------------------------------------------
-// ROOT HEALTH CHECK (IMPORTANT FOR RENDER)
-//------------------------------------------------------------
+// ------------------------------------------------------------
+// ROOT HEALTH CHECK
+// ------------------------------------------------------------
 app.get("/", (req, res) => {
   res.send("🚀 DocumentAI Backend is running successfully");
 });
 
-//------------------------------------------------------------
+// ------------------------------------------------------------
 // OCR ENDPOINT
-//------------------------------------------------------------
+// ------------------------------------------------------------
 app.post("/ocr", upload.single("image"), async (req, res) => {
   try {
     const buffer = req.file.buffer;
@@ -33,19 +47,17 @@ app.post("/ocr", upload.single("image"), async (req, res) => {
   }
 });
 
-//------------------------------------------------------------
+// ------------------------------------------------------------
 // AI MODULES
-//------------------------------------------------------------
+// ------------------------------------------------------------
 
 // PII DETECTION
 function detectPII(text) {
   let detected = [];
-
   if (/\b\d{4}\s\d{4}\s\d{4}\b/.test(text)) detected.push("AADHAAR");
   if (/[A-Z]{5}[0-9]{4}[A-Z]/.test(text)) detected.push("PAN");
   if (/\b[6-9]\d{9}\b/.test(text)) detected.push("PHONE");
   if (/\S+@\S+\.\S+/.test(text)) detected.push("EMAIL");
-
   return detected;
 }
 
@@ -61,10 +73,10 @@ function redactPII(text) {
 // TONE ANALYSIS
 function toneScore(desc) {
   let score = 0;
-  const words = ["urgent", "immediately", "asap", "kindly approve", "please approve"];
-  words.forEach(w => {
-    if (desc.toLowerCase().includes(w)) score += 15;
-  });
+  ["urgent", "immediately", "asap", "kindly approve", "please approve"]
+    .forEach(w => {
+      if (desc.toLowerCase().includes(w)) score += 15;
+    });
   return score;
 }
 
@@ -72,8 +84,7 @@ function toneScore(desc) {
 function fishiness(desc) {
   let score = 0;
   const text = desc.toLowerCase();
-
-  const suspiciousPatterns = [
+  [
     { word: "urgent", points: 20 },
     { word: "immediately", points: 20 },
     { word: "asap", points: 20 },
@@ -83,12 +94,9 @@ function fishiness(desc) {
     { word: "reimburse", points: 15 },
     { word: "fee", points: 20 },
     { word: "round off", points: 20 }
-  ];
-
-  suspiciousPatterns.forEach(rule => {
+  ].forEach(rule => {
     if (text.includes(rule.word)) score += rule.points;
   });
-
   return Math.min(100, score);
 }
 
@@ -102,8 +110,7 @@ function transparency(desc) {
 
 // CLARITY SCORE
 function clarity(desc) {
-  const len = desc.split(" ").length;
-  return Math.min(100, len * 3);
+  return Math.min(100, desc.split(" ").length * 3);
 }
 
 // HEATMAP
@@ -125,15 +132,13 @@ function jaccard(a, b) {
 function vendorPattern(name) {
   const list = invoices.filter(x => x.vendorName === name);
   if (list.length < 3) return "New Vendor (No risk pattern yet)";
-
   const avg = list.reduce((sum, x) => sum + x.amount, 0) / list.length;
   return avg > 50000 ? "Unpredictable Vendor" : "Stable Vendor Pattern";
 }
 
 // BLOCKCHAIN HASH
 function computeHash(obj) {
-  return crypto
-    .createHash("sha256")
+  return crypto.createHash("sha256")
     .update(JSON.stringify(obj))
     .digest("hex");
 }
@@ -161,9 +166,9 @@ function storyline(inv) {
   return lines.join(" ");
 }
 
-//------------------------------------------------------------
+// ------------------------------------------------------------
 // PROCESS INVOICE
-//------------------------------------------------------------
+// ------------------------------------------------------------
 app.post("/process-invoice", (req, res) => {
   const { invoiceNumber, vendorName, amount, description } = req.body;
 
@@ -182,51 +187,46 @@ app.post("/process-invoice", (req, res) => {
     similarity = Math.max(similarity, jaccard(description, doc));
   });
 
-  const plagiarismScore = Math.round(similarity * 100);
-  const anomalyScore = amount > 1000000 ? 35 : 0;
-  const vendorPatternResult = vendorPattern(vendorName);
-  const piiExposure = pii.length * 25;
-  const prevHash = invoices.length === 0 ? "GEN" : invoices[invoices.length - 1].recordHash;
-
   const inv = {
     invoiceNumber,
     vendorName,
     amount,
     description,
-    anomalyScore,
+    anomalyScore: amount > 1000000 ? 35 : 0,
     toneScore: tone,
     fishinessScore: fish,
     transparencyIndex: trans,
     clarityScore: clear,
-    plagiarismScore,
+    plagiarismScore: Math.round(similarity * 100),
     pii,
-    piiExposure,
+    piiExposure: pii.length * 25,
     heatmap: heat,
     redacted,
-    vendorPattern: vendorPatternResult,
-    storyline: storyline({ toneScore: tone, pii, fishinessScore: fish, plagiarismScore }),
-    prevHash
+    vendorPattern: vendorPattern(vendorName)
   };
 
+  inv.prevHash = invoices.length === 0 ? "GEN" : invoices[invoices.length - 1].recordHash;
   inv.recordHash = computeHash(inv);
   inv.DRS = reputationScore(inv);
+  inv.storyline = storyline(inv);
 
   invoices.push(inv);
   res.json(inv);
 });
 
-//------------------------------------------------------------
+// ------------------------------------------------------------
 // GET ALL INVOICES
-//------------------------------------------------------------
+// ------------------------------------------------------------
 app.get("/invoices", (req, res) => {
   res.json(invoices);
 });
 
-//------------------------------------------------------------
+// ------------------------------------------------------------
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`✅ Server running on port ${PORT}`);
 });
+
 
 
 
